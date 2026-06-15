@@ -1,13 +1,48 @@
-# Maestro artifacts
+# --- Maestro artifacts ---
 .maestro/output/
 maestro-output/
+test-output/
 report.xml
 report.html
 *.log
+# Maestro CLI debug/test output dir (when run inside the repo)
+.maestro/tests/
 
-# OS / editor
+# --- Node / JS tooling (mock servers, helper scripts) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.pnpm-store/
+
+# --- Build / app binaries (never commit these to a test repo) ---
+*.apk
+*.aab
+*.ipa
+*.app
+*.zip
+*.dSYM/
+
+# --- Secrets / local env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+
+# --- OS / editor ---
 .DS_Store
+.AppleDouble
+.LSOverride
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 *.swp
+*.swo
+*~
 .idea/
 .vscode/
+*.iml
