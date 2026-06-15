@@ -1,0 +1,38 @@
+# Smoke test — guest navigation
+#
+# Validates the app launches and core navigation works.
+# Prereqs: device/emulator running with the app installed;
+#          mock or real backend up if any screen is API-dependent.
+appId: com.example.app          # Android package / iOS bundle id (use `url:` for web)
+name: Smoke - guest navigation
+tags:
+  - smoke
+  - ci
+env:
+  TEST_EMAIL: maestro-smoke@example.com
+---
+# --- launch + (iOS) cold-boot crash guard ---
+- launchApp
+- swipe:
+    direction: DOWN
+    duration: 100             # no-op; avoids iOS XCTest kAXError on cold boot
+
+- takeScreenshot: 01-launch
+
+# --- wait for app to be ready (prefer a real marker over a sleep) ---
+- assertVisible:
+    id: "home-screen"
+    timeout: 15000
+
+# --- navigate ---
+- tapOn:
+    id: "tab-search"
+- assertVisible:
+    id: "search-input"
+
+- tapOn:
+    id: "tab-home"
+- assertVisible:
+    id: "home-screen"
+
+- takeScreenshot: 02-navigated

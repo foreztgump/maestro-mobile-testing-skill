@@ -1,0 +1,68 @@
+# OTP sign-in flow
+#
+# Signs in via an emailed one-time code captured from a local mail service
+# (Mailpit/MailHog) over HTTP. See reference/auth-and-data.md.
+#
+# Prereqs:
+#   - device/emulator with the app installed
+#   - email capture service reachable at EMAIL_SERVICE_URL
+#   - backend (or mock) that actually sends the OTP email
+appId: com.example.app
+name: Auth - OTP sign in
+tags:
+  - auth
+  - ci
+env:
+  TEST_EMAIL: maestro-auth@example.com
+  EMAIL_SERVICE_URL: http://localhost:8025
+---
+# --- start from a known-clean state (iOS needs clearKeychain too) ---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- swipe:
+    direction: DOWN
+    duration: 100
+
+# --- request the code ---
+- tapOn:
+    id: "email-input"
+- inputText: ${TEST_EMAIL}
+- tapOn:
+    id: "send-code-button"
+
+- assertVisible:
+    id: "otp-screen"
+    timeout: 10000
+
+# --- fetch + split the OTP from the inbox ---
+- runScript:
+    file: ../scripts/fetch-otp.js
+    env:
+      EMAIL: ${TEST_EMAIL}
+      EMAIL_SERVICE_URL: ${EMAIL_SERVICE_URL}
+- runScript:
+    file: ../scripts/split-otp.js
+    env:
+      OTP_CODE: ${output.OTP_CODE}
+
+# --- enter each digit (tap each box; auto-focus often steals the cursor) ---
+- tapOn: { id: "otp-input-0" }
+- inputText: ${output.OTP_0}
+- tapOn: { id: "otp-input-1" }
+- inputText: ${output.OTP_1}
+- tapOn: { id: "otp-input-2" }
+- inputText: ${output.OTP_2}
+- tapOn: { id: "otp-input-3" }
+- inputText: ${output.OTP_3}
+- tapOn: { id: "otp-input-4" }
+- inputText: ${output.OTP_4}
+- tapOn: { id: "otp-input-5" }
+- inputText: ${output.OTP_5}
+
+# --- verify signed in ---
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
+    timeout: 15000
+- takeScreenshot: auth-success
