@@ -1,5 +1,15 @@
 # JavaScript & Scripting
 
+- [Hard runtime constraints](#hard-runtime-constraints)
+- [Script errors are fatal](#script-errors-are-fatal)
+- [Three ways to run JS](#three-ways-to-run-js)
+- [The `output` object](#the-output-object)
+- [The `maestro` object and built-in variables](#the-maestro-object-and-built-in-variables)
+- [HTTP client](#http-client)
+- [Synthetic data with `faker`](#synthetic-data-with-faker)
+- [Debugging scripts](#debugging-scripts)
+- [Conditions in JS](#conditions-in-js)
+
 Maestro embeds a JavaScript engine (GraalJS) for dynamic values, conditions, data generation, and HTTP calls. It is **synchronous** — there is no event loop.
 
 ## Hard runtime constraints
@@ -8,12 +18,36 @@ Maestro embeds a JavaScript engine (GraalJS) for dynamic values, conditions, dat
 |---------|--------|-------------|
 | `async` / `await`, Promises | ❌ not supported | synchronous `http.*` calls |
 | `fetch()` | ❌ not available | `http.get/post/put/delete/request` |
-| `setTimeout` / timers | ❌ | n/a (engine is synchronous) |
+| `setTimeout` / timers / sleep | ❌ | poll with `repeat` + an optional wait (see below) |
+| Java host access (`java.lang.*`) | ❌ (`java` is undefined) | — |
 | `require` / `import` / npm modules | ❌ | built-in globals only (`http`, `json`, `faker`, `output`, `maestro`) |
 | `const` / `let`, template literals | ✅ supported (in `.js` files) | — |
 | `JSON.stringify` / `JSON.parse` | ✅ | — |
 
-> Note: `const`, `let`, and backtick template literals **work** in external `.js` files (`runScript`). The one place template literals break is inline `evalScript`, because the command is already wrapped in `${...}` — use string concatenation there.
+> `const`, `let`, and backtick template literals **work** in `.js` files (`runScript`). Inline `${...}` expressions end at the first `$`, so any `$` inside one (a template literal, `'$5'`) breaks the expression **silently**: the step reports COMPLETED and nothing is assigned. Keep `$` out of inline JS: write it as `'\u0024'`, or build the string in a `.js` file.
+
+## Script errors are fatal
+
+A `throw` (or any JS error) in `runScript`/`evalScript` fails the flow on the spot, even with `optional: true` and even inside `retry:`. Both only absorb Maestro failures such as a missing element or a false assertion. `retry` would not help anyway: it allows at most 3 retries, back to back with no delay.
+
+To wait for something that isn't ready yet (mail, a backend job), have the script record the state, loop while it isn't ready, and assert at the end:
+
+```yaml
+- runScript: scripts/fetch-otp.js        # sets output.OTP_CODE, or "" when not ready
+- repeat:
+    while:
+      true: ${output.OTP_CODE == ''}
+    times: 10                            # the bound: ~10 checks
+    commands:
+      - extendedWaitUntil:               # no sleep exists; an optional wait for an absent
+          visible: "__never_present__"   # element is the delay (its timeout + ~2 s per pass)
+          timeout: 1000
+          optional: true
+      - runScript: scripts/fetch-otp.js
+- assertTrue: ${output.OTP_CODE != ''}   # fail clearly if it never arrived
+```
+
+Keep `throw` for real errors (bad HTTP status, malformed data) that no retry can fix.
 
 ## Three ways to run JS
 
@@ -85,18 +119,22 @@ output.utils = { generateToken: generateToken };
 ```
 
 ```yaml
+appId: com.example.app
 onFlowStart:
   - runScript: apiUtils.js
 ---
 - evalScript: ${output.sessionToken = output.utils.generateToken('session')}
 ```
 
-## The `maestro` object
+## The `maestro` object and built-in variables
 
-| Property | Description |
-|----------|-------------|
+| Name | Description |
+|------|-------------|
 | `maestro.platform` | `'ios'`, `'android'`, or `'web'` — for cross-platform branching |
 | `maestro.copiedText` | Text from the most recent `copyTextFrom` |
+| `MAESTRO_SHARD_INDEX`, `MAESTRO_SHARD_ID`, `MAESTRO_DEVICE_UDID` | Set per run (strings); useful for unique test data and screenshot names when sharding |
+
+There is no `MAESTRO_PLATFORM` variable; use `maestro.platform`.
 
 ```yaml
 - copyTextFrom:
@@ -146,8 +184,8 @@ Common providers: `faker.name().fullName()`, `faker.internet().emailAddress()`, 
 ## Debugging scripts
 
 - `console.log` output goes to `maestro.log` (prefixed `JsConsole`); surface it with `--debug-output <dir>`.
-- **Single argument only** — `console.log('x is', x)` prints just `x is`. Use concatenation or (in files) template literals.
-- Inline logging: `- evalScript: '${console.log("Value: " + myVar)}'` (no template literals inline).
+- `console.log('x is', x)` prints every argument (GraalJS console).
+- Inline logging: `- evalScript: '${console.log("Value: " + myVar)}'` (concatenation; no `$` inside).
 
 ## Conditions in JS
 
@@ -155,7 +193,7 @@ Use the `true:` condition for feature flags / computed logic. For multi-line log
 
 ```javascript
 // checkFeature.js
-output.shouldRun = (MAESTRO_PLATFORM === 'Android' && someCalc() > 10);
+output.shouldRun = (maestro.platform === 'android' && someCalc() > 10);
 ```
 
 ```yaml

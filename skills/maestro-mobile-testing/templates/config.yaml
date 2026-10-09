@@ -1,9 +1,11 @@
 # Maestro workspace config — place at project root or inside .maestro/
 # Reference: reference/flow-control.md
 
-# Which files are part of the suite (glob). `**` = recursive.
+# Which files are part of the suite (glob). `**` = recursive, `!` excludes (Maestro 2.9+).
+# Exclude subflows so they only run through runFlow, never as standalone tests.
 flows:
   - "flows/**"
+  - "!flows/subflows/**"
 
 # Tag filters (CLI flags override these)
 includeTags:

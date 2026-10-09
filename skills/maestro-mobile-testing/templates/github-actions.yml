@@ -1,6 +1,6 @@
-# Mobile E2E via Maestro Cloud (real/hosted devices, incl. iOS).
+# Mobile E2E via Maestro Cloud (hosted Android emulators and iOS simulators).
 # Copy to .github/workflows/mobile-e2e.yml and adjust the build step for your stack.
-# Secrets required: MAESTRO_API_KEY, MAESTRO_PROJECT_ID.
+# Secrets required: MAESTRO_API_KEY, MAESTRO_PROJECT_ID (any secret names work; the action takes them as inputs).
 name: Mobile E2E
 
 on:
@@ -13,9 +13,10 @@ jobs:
   maestro-cloud:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      # JDK for the Gradle build; the action installs the Maestro CLI itself.
+      - uses: actions/setup-java@v6
         with:
           java-version: "17"
           distribution: "temurin"
@@ -30,7 +31,7 @@ jobs:
 
       - name: Run Maestro Cloud
         id: maestro
-        uses: mobile-dev-inc/action-maestro-cloud@v2
+        uses: mobile-dev-inc/action-maestro-cloud@v3
         with:
           api-key: ${{ secrets.MAESTRO_API_KEY }}
           project-id: ${{ secrets.MAESTRO_PROJECT_ID }}
@@ -38,7 +39,7 @@ jobs:
           workspace: .maestro
           include-tags: ci
           # device-model / device-os optional — run `maestro list-cloud-devices`
-          # device-os: android-34
+          # device-os: android-34      (android-api-level / ios-version are deprecated)
           # env vars / secrets for flows:
           # env: |
           #   TEST_EMAIL=maestro-ci@example.com
@@ -46,3 +47,5 @@ jobs:
       # Outputs available for later steps / PR comments:
       #   ${{ steps.maestro.outputs.MAESTRO_CLOUD_CONSOLE_URL }}
       #   ${{ steps.maestro.outputs.MAESTRO_CLOUD_FLOW_RESULTS }}
+      #   ${{ steps.maestro.outputs.MAESTRO_CLOUD_UPLOAD_STATUS }}
+      #   ${{ steps.maestro.outputs.MAESTRO_CLOUD_APP_BINARY_ID }}   (reuse via app-binary-id)

@@ -1,5 +1,12 @@
 # Selectors Reference
 
+- [Selector decision table](#selector-decision-table)
+- [Core selectors](#core-selectors)
+- [Relational selectors](#relational-selectors)
+- [State selectors](#state-selectors)
+- [Element traits & dimensions](#element-traits--dimensions)
+- [Platform notes for `id`](#platform-notes-for-id)
+
 Maestro finds elements through the OS **accessibility tree**. A selector describes *which* element a command acts on. Pick the most stable selector that uniquely identifies the element.
 
 ## Selector decision table
@@ -21,7 +28,8 @@ Maestro finds elements through the OS **accessibility tree**. A selector describ
 `text` and `id` are **regular expressions by default** — escape literal `$`, `[`, `.`, etc. with `\`.
 
 ```yaml
-# text — matches visible label / accessibility label (Android contentDescription, iOS accessibilityLabel)
+# text — matches visible text, hint text, accessibility label (Android contentDescription,
+#        iOS accessibilityLabel), and an input's error text. There is no separate `description:` key.
 - tapOn: "Login"               # shorthand, exact-ish match
 - tapOn:
     text: ".*Continue.*"       # partial via regex
@@ -33,7 +41,7 @@ Maestro finds elements through the OS **accessibility tree**. A selector describ
 - assertVisible:
     id: "header_icon"
 
-# index — 0-based, pick among identical matches (prefer relational selectors instead)
+# index — 0-based, pick among identical matches; -1 = last (prefer relational selectors instead)
 - tapOn:
     id: "buy_button"
     index: 2
@@ -130,7 +138,7 @@ Boolean filters on functional state. Combine with a core selector.
 
 ## Element traits & dimensions
 
-- **Traits** filter by physical characteristics (e.g. `square`, `long-text`). Niche; use when text/id are unavailable.
+- **Traits** filter by shape: `text`, `square`, `long-text` (space-separated, e.g. `traits: square`). Niche; use when text/id are unavailable.
 - **Dimension matchers** match by `width`/`height` with optional tolerance. Useful for finding e.g. a specific-sized image. Avoid as a primary selector — sizes vary by device.
 
 ## Platform notes for `id`
@@ -141,7 +149,7 @@ Boolean filters on functional state. Combine with a core selector.
 | iOS (SwiftUI) | `accessibilityIdentifier` | `.accessibilityIdentifier("login_button")` |
 | iOS (UIKit) | `accessibilityIdentifier` | set on the view |
 | Android Views | resource-id | `android:id` |
-| Android Compose | resource-id | `Modifier.semantics { testTagsAsResourceId = true }` then `Modifier.testTag("…")`; or `contentDescription` via `description:` |
+| Android Compose | resource-id | `Modifier.semantics { testTagsAsResourceId = true }` then `Modifier.testTag("…")`; `contentDescription` is matched by `text:` |
 | Flutter (3.19+) | semantics `identifier` | `Semantics(identifier: 'login_button', …)` — **not** Flutter `Key`s |
 
 See `reference/platforms.md` for full per-framework setup.

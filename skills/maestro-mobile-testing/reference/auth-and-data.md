@@ -2,6 +2,13 @@
 
 Patterns for OTP/magic-link auth, mock backends, seed data, and secrets. Auth is the most common source of E2E flakiness — handle state explicitly.
 
+- [OTP / magic-link capture](#otp--magic-link-capture)
+- [Auth-state pre-flight](#auth-state-pre-flight-avoid-race-conditions)
+- [iOS Keychain & logout](#ios-keychain--logout)
+- [Mock API server](#mock-api-server)
+- [Seed data via the HTTP client](#seed-data-via-the-http-client)
+- [Secrets](#secrets)
+
 ## OTP / magic-link capture
 
 E2E auth that emails a code requires reading that email programmatically. Architecture:
@@ -12,52 +19,63 @@ Maestro flow ──> app triggers auth ──> auth provider sends email
       └──< runScript reads code via HTTP <── email capture service (REST API)
 ```
 
-Common capture services with REST APIs: **Mailpit**, **MailHog**, **Ethereal**. Run one locally (or point at a staging inbox) and fetch the latest message.
+Use **Mailpit** (MailHog is unmaintained since 2020; Mailpit replaces it on the same ports, 1025 SMTP / 8025 HTTP). Point your backend's SMTP at it and read mail over its REST API. The working scripts live in `templates/scripts/`; this is the shape.
 
-### Fetch the OTP (GraalJS, synchronous)
+Three rules make it reliable:
+- **Filter by recipient** (`/api/v1/search?query=to:<email>`), never "latest message": parallel runs share the inbox.
+- **Clear that recipient's mail before requesting a code**, or you can read a code from an earlier run.
+- **Don't `throw` when the mail hasn't arrived yet.** Script errors fail the flow even inside `retry:`. Return an empty value, poll, and assert at the end.
+
+### Fetch the code (GraalJS, synchronous)
 
 ```javascript
-// scripts/fetch-otp.js  — NO fetch()/async; use http.get + json()
+// scripts/fetch-otp.js — NO fetch()/async; use http.get + json()
 const base = typeof EMAIL_SERVICE_URL !== "undefined" ? EMAIL_SERVICE_URL : "http://localhost:8025";
-const res = http.get(base + "/api/v1/messages");
-if (!res.ok) { throw new Error("Email API failed: " + res.status); }
-
-const data = json(res.body);
-const body = data.messages[0].Content.Body;     // shape depends on the service
-const match = body.match(/(\d{6})/);             // first 6-digit code
-if (!match) { throw new Error("No OTP found in latest email"); }
-output.OTP_CODE = match[1];
+output.OTP_CODE = "";
+const found = json(http.get(base + "/api/v1/search?query=" + encodeURIComponent("to:" + EMAIL)).body);
+if (found.messages.length > 0) {
+  const text = json(http.get(base + "/api/v1/message/" + found.messages[0].ID).body).Text;
+  // the number after a "code" label first, so an order number earlier in the mail can't win
+  const match = text.match(/(?:code|otp|passcode)\D{0,20}(\d{6})\b/i) || text.match(/\b(\d{6})\b/);
+  if (!match) { throw new Error("No 6-digit code in the latest mail to " + EMAIL); }
+  output.OTP_CODE = match[1];
+}
 ```
 
-### Enter the code
+### Request, poll, enter
+
+```yaml
+- runScript: scripts/clear-inbox.js          # DELETE /api/v1/search?query=to:<EMAIL>
+- tapOn: { id: "send-code-button" }
+- runScript: scripts/fetch-otp.js
+- repeat:                                    # ~10 checks, ~3 s apart
+    while:
+      true: ${output.OTP_CODE == ''}
+    times: 10
+    commands:
+      - extendedWaitUntil:                   # the delay: optional wait for an absent element
+          visible: "__never_present__"
+          timeout: 1000
+          optional: true
+      - runScript: scripts/fetch-otp.js
+- assertTrue: ${output.OTP_CODE != ''}
+```
 
 Single input field:
 
 ```yaml
-- runScript: scripts/fetch-otp.js
 - tapOn:
     id: "otp_input"
 - inputText: ${output.OTP_CODE}
 ```
 
-Segmented inputs (one box per digit) — split, then enter each. Auto-focus often steals the cursor, so tap each box:
-
-```javascript
-// scripts/split-otp.js
-const code = OTP_CODE.split("");
-output.OTP_0 = code[0]; output.OTP_1 = code[1]; output.OTP_2 = code[2];
-output.OTP_3 = code[3]; output.OTP_4 = code[4]; output.OTP_5 = code[5];
-```
+Segmented inputs (one box per digit): index the string directly. Auto-focus often steals the cursor, so tap each box:
 
 ```yaml
-- runScript:
-    file: scripts/split-otp.js
-    env:
-      OTP_CODE: ${output.OTP_CODE}
 - tapOn: { id: "otp-input-0" }
-- inputText: ${output.OTP_0}
+- inputText: ${output.OTP_CODE[0]}
 - tapOn: { id: "otp-input-1" }
-- inputText: ${output.OTP_1}
+- inputText: ${output.OTP_CODE[1]}
 # … repeat for remaining digits
 ```
 
@@ -143,4 +161,4 @@ output.appointmentTitle = json(res.body).title;
 
 - Never hardcode credentials in flows. Inject at runtime: `maestro test -e PASSWORD=$PW .maestro/` and read `${PASSWORD}`.
 - In CI use repository/CI secrets; on Maestro Cloud pass with `-e` (see `reference/ci-cd.md`).
-- Use a dedicated, disposable test account per feature (`maestro-{feature}@example.com`).
+- Use a dedicated, disposable test account per feature (`maestro-{feature}@example.com`). When sharding, add `${MAESTRO_SHARD_INDEX}` to the address so shards don't share an inbox or account.
