@@ -2,6 +2,11 @@
 
 How to write flows that don't flake, plus platform traps and an error lookup table.
 
+- [Reliability patterns](#reliability-patterns)
+- [Platform gotchas](#platform-gotchas)
+- [Error lookup](#error-lookup)
+- [New-test checklist](#new-test-checklist)
+
 ## Reliability patterns
 
 ### 1. Assert instead of sleep
@@ -65,35 +70,43 @@ One job per subflow; tag for filtering; extract setup into `onFlowStart`. See `r
 ### 7. Verify completion — don't trust a green checkmark
 A flow full of `optional: true` can "pass" while doing nothing. Add a meaningful `assertVisible` and inspect screenshots / `--debug-output` when a result looks too easy.
 
+### 8. Lint before you run
+`maestro check-syntax <file>` rejects unknown commands and properties (e.g. `timeout:` on `assertVisible`) without a device. Run it on every flow you write or edit.
+
+### 9. Budget for absent elements
+An `optional:` step or `when: visible` check whose element is absent waits about 7 s before moving on. Ten defensive popup checks cost over a minute. Check for a popup once, where it can actually appear.
+
 ## Platform gotchas
 
 ### iOS: `clearState` ≠ logged out
 `clearState` clears the sandbox but **not the Keychain**. Tokens in `expo-secure-store`/Keychain survive `clearState` and reinstalls.
 → Add `clearKeychain: true`, or use adaptive flows. Never assert guest-only UI right after `clearState` on iOS. (Android `clearState` fully resets.)
 
-### iOS: cold-boot XCTest crash (`kAXErrorInvalidUIElement`)
-The XCTest driver can crash if Maestro touches the accessibility tree before the first render completes on cold boot.
-→ Add a no-op swipe right after launch:
+### iOS: cold-boot XCTest error (`kAXErrorInvalidUIElement`)
+Maestro can hit this if it reads the accessibility tree before the first render completes. Maestro 2.7+ retries it internally; upgrade first. If it persists, wait for a real marker after launch instead of interacting immediately:
 ```yaml
 - launchApp
-- swipe: { direction: DOWN, duration: 100 }
+- extendedWaitUntil:
+    visible: { id: "home-screen" }
+    timeout: 15000
 ```
 
 ### iOS: `hideKeyboard` is flaky
-iOS has no native "hide keyboard" API; Maestro scrolls to dismiss, which isn't always reliable (and on Cloud now *fails* if it can't confirm dismissal).
-→ Tap a safe non-interactive area instead:
+iOS has no native "hide keyboard" API; Maestro scrolls to dismiss, which isn't always reliable. Newer versions verify the keyboard is gone and **fail** the step if it isn't (on Cloud first).
+→ Submit with the keyboard's own key, or tap a non-interactive element:
 ```yaml
-- tapOn: { point: "50%,20%" }   # or tapOn a header label
+- pressKey: Enter
+- tapOn: { id: "screen_title" }   # a header label; avoid raw points
 ```
 
 ### iOS: lists that fetch on scroll (`UITableView`/`UICollectionView`)
 XCTest triggers `willDisplayCell` on UI-test API calls, causing unintended pagination/hangs. Fix in app code: in `willDisplay`, only load when the `indexPath` is actually in `indexPathsForVisibleRows`/`indexPathsForVisibleItems`.
 
-### Android: `inputText` is ASCII-only
-Non-ASCII characters don't input correctly. Avoid Unicode test data on Android, or seed via API.
+### Android: Unicode `inputText` needs Maestro 2.7+
+Older CLIs drop non-ASCII characters on Android. Upgrade, or seed Unicode data via API.
 
 ### Android: `clearState` fails on some devices
-Common on Oppo/Realme/Redmi physical devices. → Developer Settings → disable **Verify apps over USB**; if needed enable **Disable permission monitoring**.
+Common on Oppo and Realme physical devices. → Developer Settings → disable **Verify apps over USB**; if needed enable **Disable permission monitoring**.
 
 ### Android: permission dialogs
 System dialogs block the flow. Set them at launch or dismiss optionally:
@@ -133,13 +146,17 @@ No backend on `localhost` → silent query failures → infinite spinners. Start
 | `Assertion is false` on visibility | Element not rendered yet | Increase timeout / verify the `id` exists via `inspect_screen` |
 | Script output empty | Wrong JS API | Use `http.get()` + `json()`, not `fetch()` |
 | Inconsistent auth after `clearState` | iOS Keychain not cleared | Add `clearKeychain: true` / adaptive flow |
-| `kAXErrorInvalidUIElement` crash | Cold-boot race (iOS) | Post-launch no-op swipe |
+| `kAXErrorInvalidUIElement` crash | Cold-boot race (iOS) | Upgrade to 2.7+; wait for a ready marker after launch |
+| `Unknown Property: timeout` | `timeout:` on `assertVisible` | `extendedWaitUntil` with `visible:` + `timeout:` |
+| `Unknown Property: …` / `… is not a valid command` | Typo or outdated syntax | `maestro check-syntax <file>`; check https://docs.maestro.dev/llms.txt |
+| Flow fails on a script error despite `optional`/`retry` | JS errors bypass both | Don't `throw` for "not ready"; poll with `repeat` and assert at the end (`reference/javascript.md`) |
+| Inline `${...}` step "completes" but sets nothing | A `$` inside the expression | Move the logic to a `.js` file |
 | Spinners / empty screens | No API server | Start a mock backend first |
 | Permission dialog blocks (Android) | Dialog not handled | `launchApp.permissions` or optional taps |
-| `Unable to clear state` (physical Android) | Oppo/Realme/Redmi quirk | Disable "Verify apps over USB" |
-| `inputText` drops characters (Android) | Unicode unsupported | Use ASCII / seed via API |
+| `Unable to clear state` (physical Android) | Oppo/Realme quirk | Disable "Verify apps over USB" |
+| `inputText` drops characters (Android) | Unicode on a pre-2.7 CLI | Upgrade / seed via API |
 | WebView elements not found (Android) | Native a11y gap | `androidWebViewHierarchy: devtools` |
-| `hideKeyboard` doesn't dismiss (iOS) | No native API | Tap a safe non-interactive point |
+| `hideKeyboard` doesn't dismiss / fails (iOS) | No native API | `pressKey: Enter` or tap a non-interactive element |
 
 ## New-test checklist
 
@@ -150,11 +167,12 @@ No backend on `localhost` → silent query failures → infinite spinners. Start
 [ ] Duplicates disambiguated by relational selectors, not index
 [ ] Waits are assertions, not sleeps; timeouts realistic
 [ ] Auth state handled (pre-flight marker or adaptive when:)
-[ ] iOS: post-launch swipe; clearKeychain if guest state required
+[ ] iOS: clearKeychain if guest state required
 [ ] Native alerts/permissions dismissed
 [ ] Reusable steps extracted to subflows / hooks
 [ ] Screenshots at key checkpoints
 [ ] Header has appId/url, name, tags (ci/smoke/wip)
 [ ] Mock/seed backend running if API-dependent
+[ ] Passes `maestro check-syntax`
 [ ] Verified with --debug-output (not just a green check)
 ```

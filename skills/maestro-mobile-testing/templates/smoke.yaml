@@ -8,20 +8,14 @@ name: Smoke - guest navigation
 tags:
   - smoke
   - ci
-env:
-  TEST_EMAIL: maestro-smoke@example.com
 ---
-# --- launch + (iOS) cold-boot crash guard ---
 - launchApp
-- swipe:
-    direction: DOWN
-    duration: 100             # no-op; avoids iOS XCTest kAXError on cold boot
-
 - takeScreenshot: 01-launch
 
-# --- wait for app to be ready (prefer a real marker over a sleep) ---
-- assertVisible:
-    id: "home-screen"
+# --- wait for app to be ready (a real marker, not a sleep) ---
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
     timeout: 15000
 
 # --- navigate ---

@@ -2,7 +2,16 @@
 
 Maestro is black-box: it sees only what the **accessibility tree** exposes. The work per platform is making elements *addressable* (stable `id`s and labels). Same YAML runs across platforms.
 
-Supported: Android (Views + Jetpack Compose), iOS (UIKit + SwiftUI), React Native, Flutter (mobile + web), web browsers. **Not** supported: Flutter Desktop, Android/iOS desktop targets.
+Supported: Android (Views + Jetpack Compose), iOS (UIKit + SwiftUI), React Native, Flutter (mobile + web), web browsers (Chromium, beta). **Not** supported: Flutter Desktop, Android/iOS desktop targets, physical iOS devices.
+
+- [React Native / Expo](#react-native--expo)
+- [iOS — SwiftUI](#ios--swiftui)
+- [iOS — UIKit](#ios--uikit)
+- [Android — Jetpack Compose](#android--jetpack-compose)
+- [Android — Views](#android--views)
+- [Flutter (3.19+)](#flutter-319)
+- [Web browsers](#web-browsers)
+- [Device management (CLI)](#device-management-cli)
 
 ## React Native / Expo
 
@@ -23,9 +32,9 @@ Maestro tests the final bundled binary — **no npm packages** (no Detox/Appium 
 ```
 
 **Expo Go vs standalone:**
-- **Expo Go**: the app runs inside the Expo container, so you can't `launchApp` your own `appId`. Launch via the dev URL:
+- **Expo Go**: the app runs inside the Expo container, so you can't `launchApp` your own `appId`. Launch via the Metro dev URL (port 8081 on current Expo SDKs; older SDKs used 19000):
   ```yaml
-  - openLink: "exp://127.0.0.1:19000"
+  - openLink: "exp://127.0.0.1:8081"
   ```
 - **EAS build / standalone / dev build**: use normal `launchApp` with your bundle id / package name. Expo + EAS Workflows are fully CI-compatible.
 
@@ -46,7 +55,7 @@ NavigationLink(value: Panel.donutEditor) {
 ```
 
 - `id` is the most resilient selector; `index` disambiguates duplicate text; `point` handles tiny system controls (toggles) when needed.
-- Quirks: `WheelPickerStyle` may not expose a full hierarchy (prefer text there); a `Toggle` initialized with text often merges label+switch into one a11y element. Inspect with **Maestro Studio** before writing YAML.
+- Quirks: `WheelPickerStyle` may not expose a full hierarchy (prefer text there); a `Toggle` initialized with text often merges label+switch into one a11y element. Inspect with the **Maestro Studio** desktop app (or the MCP `inspect_screen` tool) before writing YAML.
 - Migration safety: rewriting a UIKit screen in SwiftUI needs **zero** test changes if visuals + identifiers are preserved.
 
 ## iOS — UIKit
@@ -54,7 +63,7 @@ NavigationLink(value: Panel.donutEditor) {
 - `text` → `accessibilityLabel`
 - `id` → `accessibilityIdentifier` (the gold standard; set it on views)
 
-iOS testing runs on **Simulators** locally (no local physical iOS devices); real iOS devices are available via Maestro Cloud.
+iOS testing runs on **Simulators** only, locally and on Maestro Cloud. Physical iPhones are not supported by Maestro; third-party device clouds are the only route to real hardware.
 
 ## Android — Jetpack Compose
 
@@ -64,13 +73,12 @@ Maestro reads Compose **semantics** automatically (visible text, `contentDescrip
 // Text — works out of the box
 Text("Login")                               // - tapOn: "Login"
 
-// contentDescription → `description:` selector
+// contentDescription — also matched by `text:`
 Modifier.semantics { contentDescription = "Login Button" }
 ```
 
 ```yaml
-- tapOn:
-    description: "Login Button"
+- tapOn: "Login Button"
 ```
 
 To expose **test tags as `id`** (recommended for stability):
@@ -128,7 +136,7 @@ Semantics(
     id: "login_button"
 ```
 
-**Flutter web** is supported but renders to `<canvas>` and does **not** enable the DOM semantics overlay by default. Without it, `tapOn`/`assertVisible` fail silently. Enable in `main()`:
+On Flutter web, Maestro 2.7+ also resolves `id` against the semantics identifier. **Flutter web** is supported but renders to `<canvas>` and does **not** enable the DOM semantics overlay by default. Without it, `tapOn`/`assertVisible` fail silently. Enable in `main()`:
 
 ```dart
 import 'package:flutter/rendering.dart';
@@ -141,7 +149,7 @@ void main() {
 
 ## Web browsers
 
-Use `url:` instead of `appId:` in the header; `launchApp` navigates to it. The `css` selector is available (web only, no regex). Run headless in CI with `--headless` and `--screen-size=1920x1080`. For Android WebViews that Maestro can't see, add `androidWebViewHierarchy: devtools` to the flow header.
+Use `url:` instead of `appId:` in the header; `launchApp` navigates to it. Maestro drives Chromium (downloaded automatically); web support is in beta. The `css` selector is available (web only, no regex). Run headless in CI with `--headless` and `--screen-size=1920x1080`. For Android WebViews that Maestro can't see, add `androidWebViewHierarchy: devtools` to the flow header.
 
 ## Device management (CLI)
 

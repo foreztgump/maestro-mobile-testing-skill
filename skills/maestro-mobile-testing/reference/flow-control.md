@@ -1,10 +1,17 @@
 # Flow Control & Workspace
 
-Conditions, loops, retries, waits, hooks, nested flows, and `config.yaml`.
+- [Conditions (`when:`)](#conditions-when)
+- [Loops](#loops)
+- [Retry](#retry)
+- [Waits](#waits)
+- [Hooks](#hooks)
+- [Nested (sub)flows](#nested-subflows)
+- [`config.yaml` (workspace)](#configyaml-workspace)
+- [Tags & test architecture](#tags--test-architecture)
 
 ## Conditions (`when:`)
 
-Attach `when:` to a command (most often `runFlow`) so it runs only if the condition holds. Plain `tapOn`/`assertVisible` do **not** take `when:` — wrap them in `runFlow`.
+Attach `when:` to `runFlow` or `runScript` so it runs only if the condition holds. Other commands (`tapOn`, `assertVisible`, …) do **not** take `when:` — wrap them in `runFlow`.
 
 | Condition | Runs when |
 |-----------|-----------|
@@ -59,6 +66,8 @@ The single-command alternative is `optional: true` (the step may fail without fa
     label: "Dismiss rating popup if present"
 ```
 
+> A `visible:` condition that is false, or an `optional:` step whose element is absent, waits about 7 s before moving on. A popup check on every screen adds up; check once where the popup can appear.
+
 > Prefer separate flows over deeply nested conditionals — overusing `when:` makes flows hard to read. Only condition on **stable, unique** selectors or you reintroduce flakiness.
 
 ## Loops
@@ -77,16 +86,18 @@ The single-command alternative is `optional: true` (the step may fail without fa
     commands:
       - tapOn: "Load more"
 
-# Iterate data with JS
+# Iterate data with JS — there is no built-in loop index, so keep your own counter
+- evalScript: ${output.i = 0}
 - repeat:
     times: ${output.items.length}
     commands:
-      - tapOn: ${output.items[CURRENT_INDEX]}   # CURRENT_INDEX is provided per iteration
+      - tapOn: ${output.items[output.i]}
+      - evalScript: ${output.i = output.i + 1}
 ```
 
 ## Retry
 
-Wrap a fragile sequence so the whole block re-runs on failure:
+Wrap a fragile sequence so the whole block re-runs on failure. `maxRetries` is capped at 3 and attempts run back to back with no delay. Only Maestro failures (element not found, false assertion) trigger a retry; a JS error in a script fails immediately. To wait on a backend or inbox, use the polling loop in `reference/javascript.md`, not `retry`.
 
 ```yaml
 - retry:
@@ -119,14 +130,14 @@ onFlowComplete:
 - launchApp
 ```
 
-- If `onFlowStart` fails: the flow is marked failed, the body is skipped, but `onFlowComplete` still runs (cleanup guaranteed).
+- If `onFlowStart` fails: the flow is marked failed, the body is skipped, but `onFlowComplete` still runs. It does **not** run when the run is cancelled or times out.
 - If `onFlowComplete` fails: the flow is marked failed even if the body passed.
 - A slow hook multiplies across the suite. Don't call a flow whose own hook re-triggers the same hook (infinite loop).
-- Use `when: { platform: iOS }` inside a hook to do iOS-only cleanup (e.g. `clearKeychain`).
+- Use `runFlow` with `when: { platform: iOS }` inside a hook to do iOS-only cleanup (e.g. `clearKeychain`).
 
 ## Nested (sub)flows
 
-Extract repeated sequences; keep each subflow **atomic** (one job: `login`, `logout`, `onboarding`).
+Extract repeated sequences; keep each subflow **atomic** (one job: `login`, `logout`, `onboarding`). Aim for top-level flows of roughly 12–20 commands, one user intent each, ordered setup → actions → assertions.
 
 ```yaml
 # main flow
@@ -142,7 +153,7 @@ Extract repeated sequences; keep each subflow **atomic** (one job: `login`, `log
       PASSWORD: ${MAESTRO_PASSWORD}   # injected via -e at runtime
 ```
 
-Inside the subflow, read args with `${USERNAME}`. Suggested layout:
+Inside the subflow, read args with `${USERNAME}`. Without a `flows:` key, `maestro test <dir>` runs only the top-level files in that folder. Any glob you add that reaches the subflows folder (`flows/**`) also runs each subflow as a standalone test, so exclude it (see `config.yaml` below). Suggested layout:
 
 ```
 .maestro/
@@ -158,9 +169,10 @@ Inside the subflow, read args with `${USERNAME}`. Suggested layout:
 Place at project root or inside `.maestro/`.
 
 ```yaml
-# Discovery (glob). `*` = root only; `**` = recursive.
+# Discovery (glob). `*` = root only; `**` = recursive; `!` excludes (Maestro 2.9+).
 flows:
   - "flows/**"
+  - "!flows/subflows/**"
 
 # Filtering
 includeTags:

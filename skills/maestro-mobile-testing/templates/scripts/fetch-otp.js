@@ -1,28 +1,27 @@
-// fetch-otp.js — read the latest OTP from a mail-capture service (Mailpit/MailHog).
-// GraalJS runtime: synchronous only. Use http.get + json(); NO fetch()/async/await.
-// Env vars passed via runScript `env:` are available as bare globals.
+// fetch-otp.js: read the newest 6-digit code sent to EMAIL from Mailpit.
+// GraalJS is synchronous: use http.* + json(), never fetch()/async. runScript `env:` values are bare globals.
+// Sets output.OTP_CODE, or "" if the mail hasn't arrived. It doesn't throw for that case because a
+// script error fails the flow even inside `retry:` or with `optional: true`. See templates/auth-otp.yaml for polling.
 
-var base = typeof EMAIL_SERVICE_URL !== "undefined"
-  ? EMAIL_SERVICE_URL
-  : "http://localhost:8025";
+const base = typeof EMAIL_SERVICE_URL !== "undefined" ? EMAIL_SERVICE_URL : "http://localhost:8025";
 
-var res = http.get(base + "/api/v1/messages");
-if (!res.ok) {
-  throw new Error("Email API request failed: " + res.status);
+function getJson(url) {
+  const res = http.get(url);
+  if (!res.ok) {
+    throw new Error("Mail API " + url + " returned " + res.status);
+  }
+  return json(res.body);
 }
 
-var data = json(res.body);
-if (!data.messages || data.messages.length === 0) {
-  throw new Error("No emails found in capture service inbox");
+output.OTP_CODE = "";
+const messages = getJson(base + "/api/v1/search?query=" + encodeURIComponent("to:" + EMAIL)).messages;
+if (messages.length > 0) {
+  // Mailpit fills Text from the HTML part when a mail has no plain-text part.
+  const text = getJson(base + "/api/v1/message/" + messages[0].ID).Text;
+  // Prefer the number after a "code" label so an order or reference number can't win.
+  const match = text.match(/(?:code|otp|passcode)\D{0,20}(\d{6})\b/i) || text.match(/\b(\d{6})\b/);
+  if (!match) {
+    throw new Error("No 6-digit code in the latest mail to " + EMAIL);
+  }
+  output.OTP_CODE = match[1];
 }
-
-// Adjust the path to the body for your service's response shape.
-// Mailpit: data.messages[0].Snippet / fetch message detail; MailHog: Content.Body.
-var body = data.messages[0].Content.Body;
-var match = body.match(/(\d{6})/); // first 6-digit sequence
-if (!match) {
-  throw new Error("No 6-digit OTP found in the latest email");
-}
-
-output.OTP_CODE = match[1];
-console.log("OTP captured: " + output.OTP_CODE);

@@ -56,6 +56,8 @@ After upgrading the CLI, reload the MCP connection in your agent (e.g. Claude Co
 
 ## Tools
 
+These are the 10 tools of Maestro 2.11. The pre-2.5 tools (`tap_on`, `input_text`, `run_flow`, `check_flow_syntax`, `inspect_view_hierarchy`, `query_docs`, …) are gone; `run` and `inspect_screen` replace them. To validate YAML without a device, shell out to `maestro check-syntax <file>`.
+
 | Tool | Use |
 |------|-----|
 | `list_devices` | List local Android emulators / iOS simulators / Chromium for web |
@@ -65,10 +67,11 @@ After upgrading the CLI, reload the MCP connection in your agent (e.g. Claude Co
 | `cheat_sheet` | Returns Maestro command/syntax cheat sheet — call before authoring unfamiliar commands |
 | `list_cloud_devices` | Valid `{ device_model, device_os }` pairs for Cloud (pass OS verbatim, e.g. `iOS-17-5`) |
 | `run_on_cloud` | Submit a flow/folder to Maestro Cloud; returns `upload_id`, `project_id`, dashboard URL |
-| `get_cloud_run_status` | Poll a Cloud run every ~60s until terminal (`SUCCESS`/`ERROR`/`CANCELED`/`WARNING`) |
+| `get_cloud_run_status` | Poll a Cloud upload every ~60s until terminal (`SUCCESS`/`ERROR`/`CANCELED`/`WARNING`) |
+| `describe_cloud_run` | One Cloud run by `run_id`: status, failure reason, device, timing, and artifact links — use it to triage a failed flow |
 | `open_maestro_viewer` | Returns the Viewer URL (embeds the device in the agent/browser) |
 
-Cloud tools (`list_cloud_devices`, `run_on_cloud`, `get_cloud_run_status`) need auth: `maestro login` or `MAESTRO_CLOUD_API_KEY`.
+Cloud tools (`list_cloud_devices`, `run_on_cloud`, `get_cloud_run_status`, `describe_cloud_run`) need auth: `maestro login` or `MAESTRO_CLOUD_API_KEY`.
 
 ## Agent write-run-fix loop
 
