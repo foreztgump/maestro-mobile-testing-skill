@@ -1,0 +1,16 @@
+{
+  "name": "maestro-mobile-testing",
+  "owner": {
+    "name": "foreztgump"
+  },
+  "description": "Maestro UI testing skill for AI coding agents.",
+  "plugins": [
+    {
+      "name": "maestro-mobile-testing",
+      "source": "./",
+      "description": "Write, run, and debug Maestro UI tests (mobile and web) with current best practices.",
+      "version": "2.1.0",
+      "license": "MIT"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "maestro-mobile-testing",
+  "version": "2.1.0",
+  "description": "Write, run, and debug Maestro UI tests for React Native/Expo, Flutter, native iOS/Android, and web: selectors, flaky-test fixes, auth/OTP flows, GraalJS scripting, Maestro Cloud, CI/CD, and the Maestro MCP server.",
+  "author": {
+    "name": "foreztgump",
+    "url": "https://github.com/foreztgump"
+  },
+  "homepage": "https://github.com/foreztgump/maestro-mobile-testing-skill",
+  "repository": "https://github.com/foreztgump/maestro-mobile-testing-skill",
+  "license": "MIT",
+  "keywords": ["maestro", "mobile-testing", "e2e", "react-native", "flutter", "ios", "android", "ui-testing", "mcp"],
+  "skills": "./skills/"
+}
