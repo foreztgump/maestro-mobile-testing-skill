@@ -46,3 +46,6 @@ Desktop.ini
 .idea/
 .vscode/
 *.iml
+
+# --- plugin eval output ---
+evals/results/

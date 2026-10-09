@@ -1,0 +1,57 @@
+name: Validate skill
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"   # weekly: catch link rot and Maestro syntax drift
+
+permissions:
+  contents: read
+
+jobs:
+  flows:
+    name: Maestro check-syntax
+    runs-on: ubuntu-latest
+    env:
+      MAESTRO_VERSION: "2.11.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: "17"
+          distribution: temurin
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - run: python3 scripts/lint-flows.py
+
+  static:
+    name: Manifests, scripts, workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Parse GraalJS helpers
+        run: for f in skills/maestro-mobile-testing/templates/scripts/*.js; do node --check "$f"; done
+      - name: Validate SKILL.md against the agentskills.io spec
+        run: pipx run --spec skills-ref agentskills validate skills/maestro-mobile-testing
+      - name: Validate plugin and marketplace manifests
+        run: npx -y @anthropic-ai/claude-code plugin validate --strict .
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color .github/workflows/*.yml skills/maestro-mobile-testing/templates/github-actions.yml
+
+  links:
+    name: Links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --no-progress --include-fragments --exclude 'localhost' --exclude 'example\.com' --exclude 'hooks\.slack\.com' README.md 'skills/**/*.md'
